@@ -1,0 +1,330 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── TENANT ────────────────────────────────────────────────────────────────
+model Tenant {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  plan      String   @default("basic")
+  isActive  Boolean  @default(true)
+  logoUrl   String?
+  createdAt DateTime @default(now())
+
+  users     User[]
+  products  Product[]
+  categories Category[]
+  ingredients Ingredient[]
+  recipes   Recipe[]
+  shifts    Shift[]
+  transactions Transaction[]
+  preOrders PreOrder[]
+  productionPlans ProductionPlan[]
+  suppliers Supplier[]
+  purchases Purchase[]
+  outlets   Outlet[]
+}
+
+// ─── OUTLET ────────────────────────────────────────────────────────────────
+model Outlet {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  shifts         Shift[]
+  transactions   Transaction[]
+  outletProducts OutletProduct[]
+}
+
+// ─── OUTLET PRODUCT ────────────────────────────────────────────────────────
+model OutletProduct {
+  id            String  @id @default(uuid())
+  outletId      String
+  productId     String
+  priceOverride Int?
+  isAvailable   Boolean @default(true)
+  stock         Int?
+
+  outlet  Outlet  @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, productId])
+}
+
+// ─── USER ──────────────────────────────────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  email        String
+  passwordHash String
+  role         Role     @default(CASHIER)
+  isActive     Boolean  @default(true)
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  shifts       Shift[]
+  transactions Transaction[]
+
+  @@unique([tenantId, email])
+}
+
+enum Role {
+  OWNER
+  CASHIER
+  PRODUCTION
+}
+
+// ─── CATEGORY ──────────────────────────────────────────────────────────────
+model Category {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
+}
+
+// ─── PRODUCT ───────────────────────────────────────────────────────────────
+model Product {
+  id         String  @id @default(uuid())
+  tenantId   String
+  categoryId String?
+  name       String
+  price      Int
+  imageUrl   String?
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  tenant           Tenant             @relation(fields: [tenantId], references: [id])
+  category         Category?          @relation(fields: [categoryId], references: [id])
+  recipe           Recipe?
+  transactionItems TransactionItem[]
+  preOrderItems    PreOrderItem[]
+  productionItems  ProductionPlanItem[]
+  outletProducts   OutletProduct[]
+}
+
+// ─── INGREDIENT ────────────────────────────────────────────────────────────
+
+enum IngredientType {
+  INGREDIENT
+  EQUIPMENT
+  PACKAGING
+}
+
+model Ingredient {
+  id           String         @id @default(uuid())
+  tenantId     String
+  name         String
+  type         IngredientType @default(INGREDIENT)
+  baseUnit     String         // gram, butir, ml, dll
+  currentStock Float          @default(0)
+  minimumStock Float          @default(0)
+  currentPrice Int            @default(0) // harga per baseUnit dalam rupiah
+  notes        String?        // deskripsi tambahan, merek, dll
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  recipeItems   RecipeItem[]
+  purchaseItems PurchaseItem[]
+}
+
+// ─── RECIPE ────────────────────────────────────────────────────────────────
+model Recipe {
+  id        String @id @default(uuid())
+  tenantId  String
+  productId String @unique
+  batchSize     Int    @default(1) // resep ini untuk berapa pcs
+  notes         String?  // catatan singkat
+  instructions  String?  // langkah-langkah pembuatan (teks panjang)
+
+  tenant  Tenant       @relation(fields: [tenantId], references: [id])
+  product Product      @relation(fields: [productId], references: [id])
+  items   RecipeItem[]
+}
+
+model RecipeItem {
+  id           String @id @default(uuid())
+  recipeId     String
+  ingredientId String
+  amount       Float  // dalam baseUnit ingredient
+  unit         String // unit yang dipakai di resep (bisa berbeda, misal kg vs gram)
+  unitFactor   Float  @default(1) // konversi ke baseUnit
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+}
+
+// ─── SUPPLIER & PURCHASE ───────────────────────────────────────────────────
+model Supplier {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
+  phone    String?
+  address  String?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  purchases Purchase[]
+}
+
+model Purchase {
+  id          String   @id @default(uuid())
+  tenantId    String
+  supplierId  String?
+  date        DateTime @default(now())
+  notes       String?
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  supplier  Supplier?      @relation(fields: [supplierId], references: [id])
+  items     PurchaseItem[]
+}
+
+model PurchaseItem {
+  id           String @id @default(uuid())
+  purchaseId   String
+  ingredientId String
+  quantity     Float
+  unit         String
+  unitFactor   Float  @default(1)
+  pricePerUnit Int    // harga per unit saat pembelian
+
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+}
+
+// ─── SHIFT & TRANSACTION ───────────────────────────────────────────────────
+model Shift {
+  id           String    @id @default(uuid())
+  tenantId     String
+  outletId     String
+  userId       String
+  openedAt     DateTime  @default(now())
+  closedAt     DateTime?
+  openingCash  Int       @default(0)
+  closingCash  Int?
+  cashDiff     Int?
+  notes        String?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  outlet       Outlet        @relation(fields: [outletId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  tenantId      String
+  outletId      String
+  shiftId       String
+  userId        String
+  total         Int
+  paymentMethod PaymentMethod
+  paidAmount    Int
+  changeAmount  Int      @default(0)
+  discount      Int      @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  tenant  Tenant            @relation(fields: [tenantId], references: [id])
+  outlet  Outlet            @relation(fields: [outletId], references: [id])
+  shift   Shift             @relation(fields: [shiftId], references: [id])
+  user    User              @relation(fields: [userId], references: [id])
+  items   TransactionItem[]
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+  TRANSFER
+  SPLIT
+}
+
+model TransactionItem {
+  id            String @id @default(uuid())
+  transactionId String
+  productId     String
+  quantity      Int
+  unitPrice     Int
+  subtotal      Int
+  notes         String?
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  product     Product     @relation(fields: [productId], references: [id])
+}
+
+// ─── PRE-ORDER ─────────────────────────────────────────────────────────────
+model PreOrder {
+  id              String      @id @default(uuid())
+  tenantId        String
+  customerName    String
+  customerPhone   String
+  pickupDate      DateTime
+  total           Int
+  dpAmount        Int         @default(0)
+  remainingAmount Int
+  status          OrderStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime    @default(now())
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+  items   PreOrderItem[]
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_PRODUCTION
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+model PreOrderItem {
+  id           String  @id @default(uuid())
+  preOrderId   String
+  productId    String
+  quantity     Int
+  unitPrice    Int
+  subtotal     Int
+  customNotes  String?
+
+  preOrder PreOrder @relation(fields: [preOrderId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+}
+
+// ─── PRODUCTION PLAN ───────────────────────────────────────────────────────
+model ProductionPlan {
+  id        String   @id @default(uuid())
+  tenantId  String
+  date      DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant               @relation(fields: [tenantId], references: [id])
+  items  ProductionPlanItem[]
+}
+
+model ProductionPlanItem {
+  id               String @id @default(uuid())
+  planId           String
+  productId        String
+  targetQty        Int
+  actualQty        Int    @default(0)
+  wasteQty         Int    @default(0)
+  wasteCategory    String? // expired, reject, internal
+  unsoldQty        Int    @default(0)
+
+  plan    ProductionPlan @relation(fields: [planId], references: [id])
+  product Product        @relation(fields: [productId], references: [id])
+}
