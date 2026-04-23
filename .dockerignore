@@ -1,0 +1,7 @@
+echo "node_modules
+dist
+.env
+.env.*
+*.log
+.git
+.gitignore" > .dockerignore
