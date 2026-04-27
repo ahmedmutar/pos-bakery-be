@@ -156,10 +156,13 @@ const txSchema = z.object({
   paidAmount: z.number().int().positive(),
   discount: z.number().int().min(0).optional(),
   notes: z.string().optional(),
+  paymentProof: z.string().optional(),
 })
 
 // POST /transactions
-transactionRoutes.post('/', zValidator('json', txSchema), async (c) => {
+transactionRoutes.post('/',
+  zValidator('json', txSchema),
+  async (c) => {
   const { tenantId, userId } = c.get('auth')
   const body = c.req.valid('json')
 
@@ -235,6 +238,7 @@ transactionRoutes.post('/', zValidator('json', txSchema), async (c) => {
       changeAmount,
       discount,
       notes: body.notes,
+      paymentProof: body.paymentProof,
       items: {
         create: verifiedItems,
       },
@@ -321,7 +325,7 @@ transactionRoutes.post('/:id/void', async (c) => {
   if (!tx) return c.json({ error: 'Transaksi tidak ditemukan' }, 404)
 
   // Check if already voided
-  if (tx.notes?.startsWith('[VOID]')) {
+  if (tx.isVoided) {
     return c.json({ error: 'Transaksi sudah divoid' }, 409)
   }
 
@@ -337,6 +341,7 @@ transactionRoutes.post('/:id/void', async (c) => {
   const voided = await prisma.transaction.update({
     where: { id },
     data: {
+      isVoided: true,
       notes: `[VOID] ${tx.notes ?? ''}`.trim(),
       total: 0,
     },

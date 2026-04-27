@@ -6,10 +6,13 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { createWSServer } from './lib/websocket.js'
 import { globalRateLimit, securityHeaders } from './middleware/security.js'
+import { trialGuard } from './middleware/trialGuard.js'
 import { authRoutes } from './routes/auth.js'
 import { outletRoutes } from './routes/outlets.js'
 import { outletProductRoutes } from './routes/outletProducts.js'
 import { settingsRoutes } from './routes/settings.js'
+import { stockRoutes } from './routes/stock.js'
+import { billingRoutes } from './routes/billing.js'
 import { paymentRoutes } from './routes/payment.js'
 import { categoryRoutes } from './routes/categories.js'
 import { recipeRoutes } from './routes/recipes.js'
@@ -42,11 +45,16 @@ app.use('*', globalRateLimit)
 // ─── Health check ───────────────────────────────────────────────────────────
 app.get('/', (c) => c.json({ status: 'ok', app: 'POS Bakery API', version: '1.0.0' }))
 
+// Trial guard — runs after auth middleware on all protected routes
+app.use('/api/*', trialGuard)
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.route('/api/auth', authRoutes)
 app.route('/api/outlets', outletRoutes)
 app.route('/api/outlet-products', outletProductRoutes)
 app.route('/api/settings', settingsRoutes)
+app.route('/api/stock', stockRoutes)
+app.route('/api/billing', billingRoutes)
 app.route('/api/payment', paymentRoutes)
 app.route('/api/categories', categoryRoutes)
 app.route('/api/recipes', recipeRoutes)

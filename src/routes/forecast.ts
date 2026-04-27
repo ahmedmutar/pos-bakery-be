@@ -1,11 +1,14 @@
 import { Hono } from 'hono'
 import { prisma } from '../lib/prisma.js'
+import { requireFeature } from '../middleware/featureGate.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 export const forecastRoutes = new Hono()
 forecastRoutes.use('*', authMiddleware)
 
 // GET /forecast — returns suggested production for today/tomorrow
+forecastRoutes.use('*', requireFeature('hasForecast'))
+
 forecastRoutes.get('/', async (c) => {
   const { tenantId } = c.get('auth')
   const { days = '14' } = c.req.query()

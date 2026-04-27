@@ -1,9 +1,7 @@
-// Plan limits for each subscription tier
-
 export interface PlanLimits {
-  maxOutlets: number        // -1 = unlimited
-  maxUsers: number          // -1 = unlimited
-  maxProducts: number       // -1 = unlimited
+  maxOutlets: number     // -1 = unlimited
+  maxUsers: number
+  maxProducts: number
   hasReports: boolean
   hasForecast: boolean
   hasExcelImport: boolean
@@ -49,6 +47,17 @@ export function getPlanLimits(plan: string): PlanLimits {
 }
 
 export function checkLimit(current: number, max: number): boolean {
-  if (max === -1) return true // unlimited
+  if (max === -1) return true
   return current < max
+}
+
+export function isTrialExpired(trialEndsAt: Date | null): boolean {
+  if (!trialEndsAt) return false
+  return new Date() > new Date(trialEndsAt)
+}
+
+export function trialDaysLeft(trialEndsAt: Date | null): number {
+  if (!trialEndsAt) return 0
+  const diff = new Date(trialEndsAt).getTime() - Date.now()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }

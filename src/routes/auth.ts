@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma.js'
 import { signToken } from '../lib/jwt.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { blacklistToken } from '../lib/tokenBlacklist.js'
-import { sendWelcomeEmail } from '../lib/email.js'
+import { sendWelcomeEmail, sendAdminNewRegistrationEmail, sendOTPEmail } from '../lib/email.js'
 import { audit } from '../lib/auditLog.js'
 import { loginRateLimit } from '../middleware/security.js'
 
@@ -58,6 +58,15 @@ authRoutes.post('/register', loginRateLimit, zValidator('json', registerSchema),
   const token = signToken({ userId: owner.id, tenantId: tenant.id, role: owner.role })
 
   // Send welcome email (non-blocking)
+  // Notify admin of new registration
+  sendAdminNewRegistrationEmail({
+    ownerName,
+    tenantName,
+    email,
+    plan: 'basic (trial)',
+    registeredAt: new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }),
+  }).catch(() => {}) // fire and forget
+
   sendWelcomeEmail({
     to: owner.email,
     ownerName: owner.name,
@@ -156,3 +165,93 @@ authRoutes.post('/logout', authMiddleware, async (c) => {
   await audit({ tenantId, userId, action: 'USER_LOGOUT' })
   return c.json({ message: 'Berhasil logout' })
 })
+
+// POST /auth/forgot-password — request reset token
+authRoutes.post('/forgot-password',
+  zValidator('json', z.object({ email: z.string().email() })),
+  async (c) => {
+    const { email } = c.req.valid('json')
+
+    const user = await prisma.user.findFirst({
+      where: { email, isActive: true },
+      include: { tenant: { select: { name: true } } },
+    })
+
+    // Always return 200 to prevent email enumeration
+    if (!user) return c.json({ message: 'Jika email terdaftar, instruksi reset akan dikirim.' })
+
+    // Invalidate old tokens
+    await prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    })
+
+    // Create new token (expires in 1 hour)
+    const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '')
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+
+    await prisma.passwordResetToken.create({
+      data: { userId: user.id, token, expiresAt },
+    })
+
+    // Try send email if SMTP configured
+    const resetUrl = `${process.env.APP_URL ?? 'http://localhost:5173'}/reset-password?token=${token}`
+
+    if (process.env.SMTP_HOST) {
+      try {
+        const { sendEmail } = await import('../lib/email.js')
+        await sendEmail({
+          to: email,
+          subject: `Reset Password - ${user.tenant.name}`,
+          html: `
+            <p>Halo ${user.name},</p>
+            <p>Klik link berikut untuk reset password Anda (berlaku 1 jam):</p>
+            <p><a href="${resetUrl}">${resetUrl}</a></p>
+            <p>Jika Anda tidak meminta reset password, abaikan email ini.</p>
+          `,
+        })
+      } catch (e) {
+        console.error('Failed to send reset email:', e)
+      }
+    } else {
+      // Development: log token to console
+      console.log(`[RESET TOKEN] ${email}: ${resetUrl}`)
+    }
+
+    return c.json({ message: 'Jika email terdaftar, instruksi reset akan dikirim.' })
+  }
+)
+
+// POST /auth/reset-password — use token to set new password
+authRoutes.post('/reset-password',
+  zValidator('json', z.object({
+    token:       z.string().min(10),
+    newPassword: z.string().min(8),
+  })),
+  async (c) => {
+    const { token, newPassword } = c.req.valid('json')
+
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { token },
+      include: { user: true },
+    })
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+      return c.json({ error: 'Token tidak valid atau sudah kadaluarsa.' }, 400)
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12)
+
+    await prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash },
+    })
+
+    await prisma.passwordResetToken.update({
+      where: { id: resetToken.id },
+      data: { usedAt: new Date() },
+    })
+
+    return c.json({ message: 'Password berhasil direset. Silakan login.' })
+  }
+)

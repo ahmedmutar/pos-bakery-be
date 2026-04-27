@@ -88,6 +88,21 @@ inventoryRoutes.post(
       data: { currentStock: actualStock },
     })
 
+    // Log ke StockAdjustment
+    const { notes } = c.req.valid('json')
+    const { userId } = c.get('auth')
+    await prisma.stockAdjustment.create({
+      data: {
+        tenantId,
+        ingredientId: id,
+        userId,
+        previousQty: existing.currentStock,
+        newQty: actualStock,
+        difference: diff,
+        reason: notes ?? 'Penyesuaian manual',
+      },
+    }).catch(() => {}) // non-critical, don't fail if this errors
+
     return c.json({ ...ingredient, adjustment: diff })
   }
 )

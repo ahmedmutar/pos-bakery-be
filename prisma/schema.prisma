@@ -12,10 +12,15 @@ model Tenant {
   id        String   @id @default(uuid())
   slug      String   @unique
   name      String
-  plan      String   @default("basic")
-  isActive  Boolean  @default(true)
-  logoUrl   String?
-  createdAt DateTime @default(now())
+  plan         String    @default("basic")
+  isActive     Boolean   @default(true)
+  logoUrl      String?
+  createdAt    DateTime  @default(now())
+  trialEndsAt  DateTime?
+  bankName     String?   // nama bank, contoh: BCA
+  bankAccount  String?   // nomor rekening
+  bankHolder   String?   // nama pemilik rekening
+  qrisImageUrl String?   // foto QR code QRIS milik toko
 
   users     User[]
   products  Product[]
@@ -27,8 +32,11 @@ model Tenant {
   preOrders PreOrder[]
   productionPlans ProductionPlan[]
   suppliers Supplier[]
-  purchases Purchase[]
-  outlets   Outlet[]
+  purchases         Purchase[]
+  outlets           Outlet[]
+  stockOpnames      StockOpname[] @relation("TenantStockOpnames")
+  stockAdjustments  StockAdjustment[] @relation("TenantStockAdjustments")
+  subscriptions     Subscription[]
 }
 
 // ─── OUTLET ────────────────────────────────────────────────────────────────
@@ -74,11 +82,27 @@ model User {
   createdAt    DateTime @default(now())
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  shifts       Shift[]
-  transactions Transaction[]
+  shifts            Shift[]
+  transactions      Transaction[]
+  stockOpnames      StockOpname[] @relation("UserStockOpnames")
+  stockAdjustments  StockAdjustment[] @relation("UserStockAdjustments")
+  passwordResets    PasswordResetToken[]
 
   @@unique([tenantId, email])
 }
+
+// ─── AUDIT LOG ───────────────────────────────────────────────────────────────
+model AuditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  detail    String?
+  createdAt DateTime @default(now())
+}
+
 
 enum Role {
   OWNER
@@ -135,9 +159,111 @@ model Ingredient {
   currentPrice Int            @default(0) // harga per baseUnit dalam rupiah
   notes        String?        // deskripsi tambahan, merek, dll
 
-  tenant        Tenant          @relation(fields: [tenantId], references: [id])
-  recipeItems   RecipeItem[]
-  purchaseItems PurchaseItem[]
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  recipeItems     RecipeItem[]
+  purchaseItems   PurchaseItem[]
+  opnameItems     StockOpnameItem[]
+  adjustments     StockAdjustment[]
+}
+
+
+// ─── STOCK OPNAME ──────────────────────────────────────────────────────────
+model StockOpname {
+  id          String            @id @default(uuid())
+  tenantId    String
+  conductedBy String            // userId
+  notes       String?
+  status      StockOpnameStatus @default(DRAFT)
+  createdAt   DateTime          @default(now())
+  finishedAt  DateTime?
+
+  tenant  Tenant             @relation("TenantStockOpnames", fields: [tenantId], references: [id])
+  user    User               @relation("UserStockOpnames", fields: [conductedBy], references: [id])
+  items   StockOpnameItem[]
+}
+
+model StockOpnameItem {
+  id           String  @id @default(uuid())
+  opnameId     String
+  ingredientId String
+  systemQty    Float   // stok sistem saat opname dimulai
+  physicalQty  Float?  // stok fisik hasil hitung
+  difference   Float?  // physicalQty - systemQty
+  notes        String?
+
+  opname     StockOpname @relation(fields: [opnameId], references: [id])
+  ingredient Ingredient  @relation(fields: [ingredientId], references: [id])
+}
+
+// Adjustment log — untuk Basic plan (sesuaikan stok manual)
+model StockAdjustment {
+  id           String   @id @default(uuid())
+  tenantId     String
+  ingredientId String
+  userId       String
+  previousQty  Float
+  newQty       Float
+  difference   Float
+  reason       String
+  createdAt    DateTime @default(now())
+
+  tenant     Tenant     @relation("TenantStockAdjustments", fields: [tenantId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+  user       User       @relation("UserStockAdjustments", fields: [userId], references: [id])
+}
+
+enum StockOpnameStatus {
+  DRAFT
+  FINISHED
+}
+
+
+
+// ─── SUBSCRIPTION ────────────────────────────────────────────────────────────
+model Subscription {
+  id              String             @id @default(uuid())
+  tenantId        String
+  plan            String             // basic, pro, enterprise
+  status          SubscriptionStatus @default(PENDING)
+  xenditInvoiceId String?            @unique
+  xenditPaymentId String?
+  amount          Int
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  createdAt       DateTime           @default(now())
+  paidAt          DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+}
+
+enum SubscriptionStatus {
+  PENDING
+  PAID
+  EXPIRED
+  FAILED
+}
+
+
+// ─── EMAIL VERIFICATION OTP ──────────────────────────────────────────────────
+model EmailOTP {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ─── PASSWORD RESET ──────────────────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 // ─── RECIPE ────────────────────────────────────────────────────────────────
@@ -234,6 +360,8 @@ model Transaction {
   changeAmount  Int      @default(0)
   discount      Int      @default(0)
   notes         String?
+  paymentProof  String?  // nomor referensi / nama pengirim
+  isVoided      Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   tenant  Tenant            @relation(fields: [tenantId], references: [id])

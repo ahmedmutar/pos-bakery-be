@@ -134,3 +134,75 @@ recipeRoutes.delete('/:productId', async (c) => {
   await prisma.recipe.delete({ where: { productId } })
   return c.json({ message: 'Resep dihapus' })
 })
+
+// POST /recipes/:productId/duplicate — duplikat resep ke produk lain
+recipeRoutes.post('/:productId/duplicate', async (c) => {
+  const { tenantId } = c.get('auth')
+  const { productId } = c.req.param()
+  const body = await c.req.json().catch(() => ({}))
+  const targetProductId: string | undefined = body.targetProductId
+
+  // Get source recipe
+  const source = await prisma.recipe.findFirst({
+    where: { productId, tenantId },
+    include: { items: true },
+  })
+  if (!source) return c.json({ error: 'Resep tidak ditemukan' }, 404)
+
+  // If targetProductId provided, duplicate to that product
+  // Otherwise, find the next available product without a recipe
+  let destProductId = targetProductId
+
+  if (!destProductId) {
+    // Find products without recipe
+    const allProducts = await prisma.product.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, name: true },
+    })
+    const withRecipe = await prisma.recipe.findMany({
+      where: { tenantId },
+      select: { productId: true },
+    })
+    const withRecipeIds = new Set(withRecipe.map(r => r.productId))
+    const without = allProducts.filter(p => !withRecipeIds.has(p.id) && p.id !== productId)
+    if (without.length === 0) {
+      return c.json({ error: 'Tidak ada produk lain yang belum memiliki resep.', code: 'NO_TARGET' }, 400)
+    }
+    destProductId = without[0].id
+  }
+
+  // Check target doesn't already have a recipe
+  const existing = await prisma.recipe.findFirst({ where: { productId: destProductId, tenantId } })
+  if (existing) return c.json({ error: 'Produk tujuan sudah memiliki resep.', code: 'ALREADY_HAS_RECIPE' }, 409)
+
+  // Verify target product belongs to tenant
+  const targetProduct = await prisma.product.findFirst({
+    where: { id: destProductId, tenantId },
+    select: { id: true, name: true },
+  })
+  if (!targetProduct) return c.json({ error: 'Produk tujuan tidak ditemukan' }, 404)
+
+  // Create duplicate recipe
+  const duplicate = await prisma.recipe.create({
+    data: {
+      tenantId,
+      productId: destProductId,
+      batchSize: source.batchSize,
+      notes: source.notes ? `${source.notes} (duplikat)` : undefined,
+      instructions: source.instructions,
+      items: {
+        create: source.items.map(item => ({
+          ingredientId: item.ingredientId,
+          amount: item.amount,
+          unit: item.unit,
+          unitFactor: item.unitFactor,
+        })),
+      },
+    },
+    include: {
+      items: { include: { ingredient: true } },
+    },
+  })
+
+  return c.json({ recipe: duplicate, targetProduct }, 201)
+})
