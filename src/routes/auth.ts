@@ -12,6 +12,68 @@ import { loginRateLimit } from '../middleware/security.js'
 
 export const authRoutes = new Hono()
 
+
+// ─── OTP helpers ────────────────────────────────────────────────────────────
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString()
+}
+
+// POST /auth/send-otp
+authRoutes.post('/send-otp',
+  zValidator('json', z.object({ email: z.string().email(), name: z.string().min(1) })),
+  async (c) => {
+    const { email, name } = c.req.valid('json')
+
+    // Cek email sudah terdaftar
+    const existing = await prisma.user.findFirst({ where: { email } })
+    if (existing) {
+      return c.json({ error: 'Email sudah terdaftar. Silakan login.' }, 409)
+    }
+
+    // Invalidate OTP lama
+    await prisma.emailOTP.updateMany({
+      where: { email, usedAt: null },
+      data: { usedAt: new Date() },
+    })
+
+    const otp = generateOTP()
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 menit
+
+    await prisma.emailOTP.create({ data: { email, otp, expiresAt } })
+
+    // Kirim email
+    if (process.env.SMTP_HOST) {
+      try {
+        await sendOTPEmail({ to: email, otp, name })
+      } catch (e) {
+        console.error('Failed to send OTP email:', e)
+        return c.json({ error: 'Gagal mengirim OTP. Periksa email Anda dan coba lagi.' }, 500)
+      }
+    } else {
+      // Dev mode — log ke console
+      console.log(`[OTP DEV] ${email}: ${otp}`)
+    }
+
+    return c.json({ message: 'OTP berhasil dikirim.' })
+  }
+)
+
+// POST /auth/verify-otp (cek saja, tanpa register)
+authRoutes.post('/verify-otp',
+  zValidator('json', z.object({ email: z.string().email(), otp: z.string().length(6) })),
+  async (c) => {
+    const { email, otp } = c.req.valid('json')
+    const record = await prisma.emailOTP.findFirst({
+      where: { email, otp, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!record) {
+      return c.json({ error: 'Kode OTP tidak valid atau sudah kadaluarsa.' }, 400)
+    }
+    return c.json({ valid: true })
+  }
+)
+
 // ─── Register tenant + owner ────────────────────────────────────────────────
 const registerSchema = z.object({
   tenantName: z.string().min(2),
@@ -19,10 +81,23 @@ const registerSchema = z.object({
   ownerName: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
+  otp: z.string().length(6).optional(),
 })
 
 authRoutes.post('/register', loginRateLimit, zValidator('json', registerSchema), async (c) => {
-  const { tenantName, slug, ownerName, email, password } = c.req.valid('json')
+  const { tenantName, slug, ownerName, email, password, otp } = c.req.valid('json')
+
+  // Verifikasi OTP jika dikirim
+  if (otp) {
+    const otpRecord = await prisma.emailOTP.findFirst({
+      where: { email, otp, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!otpRecord) {
+      return c.json({ error: 'Kode OTP tidak valid atau sudah kadaluarsa.' }, 400)
+    }
+    await prisma.emailOTP.update({ where: { id: otpRecord.id }, data: { usedAt: new Date() } })
+  }
 
   const existingSlug = await prisma.tenant.findUnique({ where: { slug } })
   if (existingSlug) {
@@ -164,6 +239,36 @@ authRoutes.post('/logout', authMiddleware, async (c) => {
   const { userId, tenantId } = c.get('auth')
   await audit({ tenantId, userId, action: 'USER_LOGOUT' })
   return c.json({ message: 'Berhasil logout' })
+})
+
+
+// POST /auth/send-otp-auth — kirim OTP untuk user yang sudah login (ganti password)
+authRoutes.post('/send-otp-auth', authMiddleware, async (c) => {
+  const { userId } = c.get('auth')
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } })
+  if (!user) return c.json({ error: 'User tidak ditemukan' }, 404)
+
+  // Invalidate OTP lama
+  await prisma.emailOTP.updateMany({
+    where: { email: user.email, usedAt: null },
+    data: { usedAt: new Date() },
+  })
+
+  const otp = generateOTP()
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+  await prisma.emailOTP.create({ data: { email: user.email, otp, expiresAt } })
+
+  if (process.env.SMTP_HOST) {
+    try {
+      await sendOTPEmail({ to: user.email, otp, name: user.name })
+    } catch {
+      console.log(`[OTP DEV] ${user.email}: ${otp}`)
+    }
+  } else {
+    console.log(`[OTP DEV] ${user.email}: ${otp}`)
+  }
+
+  return c.json({ message: 'OTP berhasil dikirim.' })
 })
 
 // POST /auth/forgot-password — request reset token

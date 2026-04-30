@@ -13,7 +13,6 @@ import { outletProductRoutes } from './routes/outletProducts.js'
 import { settingsRoutes } from './routes/settings.js'
 import { stockRoutes } from './routes/stock.js'
 import { billingRoutes } from './routes/billing.js'
-import { paymentRoutes } from './routes/payment.js'
 import { categoryRoutes } from './routes/categories.js'
 import { recipeRoutes } from './routes/recipes.js'
 import { productionRoutes } from './routes/production.js'
@@ -55,7 +54,6 @@ app.route('/api/outlet-products', outletProductRoutes)
 app.route('/api/settings', settingsRoutes)
 app.route('/api/stock', stockRoutes)
 app.route('/api/billing', billingRoutes)
-app.route('/api/payment', paymentRoutes)
 app.route('/api/categories', categoryRoutes)
 app.route('/api/recipes', recipeRoutes)
 app.route('/api/production', productionRoutes)
