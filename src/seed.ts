@@ -26,7 +26,7 @@ async function main() {
     update: {},
     create: {
       name: 'Bakery Sejahtera', slug: 'bakery-sejahtera', plan: 'pro',
-      bankName: 'BCA', bankAccount: '1234567890', bankHolder: 'Pemilik Bakery',
+      bankName: 'BCA', bankAccount: '1234567890', bankHolder: 'Pemilik Toko',
     },
   })
   console.log(`✅ Tenant: ${tenant.name}`)
@@ -45,7 +45,7 @@ async function main() {
   console.log(`✅ Outlet: ${outletDefs.length} outlet`)
 
   const userDefs = [
-    { name: 'Pemilik Bakery', email: 'owner@bakery.com',    role: 'OWNER'      as const, password: 'password123' },
+    { name: 'Pemilik Toko', email: 'owner@bakery.com',    role: 'OWNER'      as const, password: 'password123' },
     { name: 'Kasir Utama',    email: 'kasir@bakery.com',    role: 'CASHIER'    as const, password: 'password123' },
     { name: 'Kasir Cabang',   email: 'kasir2@bakery.com',   role: 'CASHIER'    as const, password: 'password123' },
     { name: 'Tim Produksi',   email: 'produksi@bakery.com', role: 'PRODUCTION' as const, password: 'password123' },

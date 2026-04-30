@@ -25,7 +25,7 @@ export async function createXenditInvoice({
   const isUAT = key.startsWith('xnd_development_')
   const isProd = key.startsWith('xnd_production_')
   const env = isUAT ? 'UAT' : isProd ? 'PRODUCTION' : 'DEV_BYPASS'
-  console.log(`[Xendit] Creating invoice — env: ${env}`)
+  if (process.env.NODE_ENV !== 'production') console.log(`[Xendit] env: ${env}`)
 
   const client = new Xendit({ secretKey: key })
   const invoiceClient = new XenditInvoice({ client })

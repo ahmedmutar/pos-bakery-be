@@ -209,7 +209,7 @@ export async function sendAdminNewRegistrationEmail(params: {
       <div class="info-row" style="border:0">
         <span class="info-label">WhatsApp</span>
         <span class="info-value">
-          <a href="https://wa.me/${process.env.ADMIN_WHATSAPP ?? '6208970120687'}?text=Halo+${encodeURIComponent(params.ownerName)},+selamat+datang+di+Roti+POS!+Saya+dari+tim+support.+Ada+yang+bisa+saya+bantu?" 
+          <a href="https://wa.me/${process.env.ADMIN_WHATSAPP ?? '62'}?text=Halo+${encodeURIComponent(params.ownerName)},+selamat+datang+di+Roti+POS!+Saya+dari+tim+support.+Ada+yang+bisa+saya+bantu?" 
              style="color:#2c6e49">Sapa via WhatsApp</a>
         </span>
       </div>

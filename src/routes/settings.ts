@@ -151,7 +151,11 @@ settingsRoutes.post(
   zValidator('json', z.object({
     name: z.string().min(2),
     email: z.string().email(),
-    password: z.string().min(6),
+    password: z.string()
+  .min(8, 'Password minimal 8 karakter')
+  .regex(/[A-Z]/, 'Password harus mengandung minimal 1 huruf besar')
+  .regex(/[0-9]/, 'Password harus mengandung minimal 1 angka')
+  .regex(/[^A-Za-z0-9]/, 'Password harus mengandung minimal 1 simbol'),
     role: z.enum(['OWNER', 'CASHIER', 'PRODUCTION']),
   })),
   async (c) => {
@@ -234,7 +238,11 @@ settingsRoutes.patch(
   '/change-password',
   zValidator('json', z.object({
     currentPassword: z.string(),
-    newPassword: z.string().min(6),
+    newPassword: z.string()
+  .min(8, 'Password minimal 8 karakter')
+  .regex(/[A-Z]/, 'Password harus mengandung minimal 1 huruf besar')
+  .regex(/[0-9]/, 'Password harus mengandung minimal 1 angka')
+  .regex(/[^A-Za-z0-9]/, 'Password harus mengandung minimal 1 simbol'),
     otp: z.string().length(6).optional(),
   })),
   async (c) => {
