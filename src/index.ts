@@ -138,7 +138,10 @@ app.onError((err, c) => { console.error(err); return c.json({ error: 'Internal s
 // ─── Start HTTP + WebSocket server ──────────────────────────────────────────
 const port = parseInt(process.env.PORT ?? '3000')
 
+// Run migrations then start server
+await runMigrations()
+
 const server = serve({ fetch: app.fetch, port }, () => {
-  console.log(`🥐 POS Bakery API berjalan di http://localhost:${port}`)
+  console.log(`🥐 Sajiin API berjalan di http://localhost:${port}`)
   createWSServer(server as unknown as import('http').Server)
 })
