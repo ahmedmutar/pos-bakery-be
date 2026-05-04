@@ -4,24 +4,24 @@
  */
 
 import nodemailer from 'nodemailer'
-import { Resend } from 'resend'
 
 // ─── Provider detection ───────────────────────────────────────────────────────
 type EmailProvider = 'resend' | 'smtp' | 'console'
 
 function getProvider(): EmailProvider {
   if (process.env.RESEND_API_KEY) return 'resend'
-  if (process.env.SMTP_HOST) return 'smtp'
+  if (process.env.SMTP_HOST)      return 'smtp'
   return 'console'
 }
 
-const FROM_NAME = 'Sajiin'
-const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@sajiin.id'
+const FROM_NAME    = 'Sajiin'
+const FROM_EMAIL   = process.env.FROM_EMAIL ?? 'noreply@sajiin.id'
 const FROM_ADDRESS = `${FROM_NAME} <${FROM_EMAIL}>`
-const APP_URL = process.env.APP_URL ?? 'https://sajiin.id'
+const APP_URL      = process.env.APP_URL ?? 'https://sajiin.id'
 
 // ─── Send via Resend ──────────────────────────────────────────────────────────
 async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
+  const { Resend } = await import('resend')
   const resend = new Resend(process.env.RESEND_API_KEY)
 
   const { error } = await resend.emails.send({
@@ -37,15 +37,15 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
 // ─── Send via SMTP ────────────────────────────────────────────────────────────
 async function sendViaSMTP(to: string, subject: string, html: string): Promise<void> {
   const transport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST!,
-    port: parseInt(process.env.SMTP_PORT ?? '587'),
+    host:   process.env.SMTP_HOST!,
+    port:   parseInt(process.env.SMTP_PORT ?? '587'),
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
     connectionTimeout: 10000,
-    greetingTimeout: 10000,
+    greetingTimeout:   10000,
   })
 
   await transport.sendMail({ from: FROM_ADDRESS, to, subject, html })

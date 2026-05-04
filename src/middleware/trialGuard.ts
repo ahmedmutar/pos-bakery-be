@@ -9,6 +9,7 @@ const ALWAYS_ALLOWED = [
   '/api/auth/me',
   '/api/auth/forgot-password',
   '/api/auth/send-otp',
+  '/api/auth/login/verify',
   '/api/auth/verify-otp',
   '/api/auth/reset-password',
   '/api/billing/webhook',

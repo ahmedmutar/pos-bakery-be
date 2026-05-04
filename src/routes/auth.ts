@@ -174,15 +174,21 @@ const loginSchema = z.object({
   password: z.string().min(1).max(128),
 })
 
+const loginVerifySchema = z.object({
+  email: z.string().email().max(255),
+  otp:   z.string().length(6),
+})
+
+// ─── Step 1: Verifikasi email+password → kirim OTP ──────────────────────────
 authRoutes.post('/login', loginRateLimit, zValidator('json', loginSchema), async (c) => {
   const { email, password } = c.req.valid('json')
 
-  // Find user — email is unique per tenant so we search globally then validate
   const user = await prisma.user.findFirst({
     where: { email, isActive: true },
     include: { tenant: true },
   })
 
+  // Generic error — jangan beri tahu apakah email terdaftar atau tidak
   if (!user) {
     return c.json({ error: 'Email atau kata sandi salah' }, 401)
   }
@@ -196,17 +202,67 @@ authRoutes.post('/login', loginRateLimit, zValidator('json', loginSchema), async
     return c.json({ error: 'Akun toko tidak aktif' }, 403)
   }
 
+  // Invalidate OTP lama
+  await prisma.emailOTP.updateMany({
+    where: { email, usedAt: null },
+    data:  { usedAt: new Date() },
+  })
+
+  const otp       = generateOTP()
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 menit
+  await prisma.emailOTP.create({ data: { email, otp, expiresAt } })
+
+  // Kirim OTP email (non-blocking di dev, blocking di production agar error ketahuan)
+  try {
+    await sendOTPEmail({ to: email, otp, name: user.name })
+  } catch (e) {
+    console.error('[Login OTP] Gagal kirim email:', e)
+    // Tetap lanjut agar dev bisa lihat OTP di log
+  }
+
+  return c.json({
+    step:    'otp',
+    message: 'Kode OTP telah dikirim ke email Anda.',
+    email,   // kembalikan email agar FE bisa pakai untuk step 2
+  })
+})
+
+// ─── Step 2: Verifikasi OTP → return token ──────────────────────────────────
+authRoutes.post('/login/verify', loginRateLimit, otpRateLimit, zValidator('json', loginVerifySchema), async (c) => {
+  const { email, otp } = c.req.valid('json')
+
+  const otpRecord = await prisma.emailOTP.findFirst({
+    where: { email, otp, usedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (!otpRecord) {
+    return c.json({ error: 'Kode OTP tidak valid atau sudah kadaluarsa.' }, 400)
+  }
+
+  // Mark OTP as used
+  await prisma.emailOTP.update({ where: { id: otpRecord.id }, data: { usedAt: new Date() } })
+
+  const user = await prisma.user.findFirst({
+    where: { email, isActive: true },
+    include: { tenant: true },
+  })
+
+  if (!user || !user.tenant.isActive) {
+    return c.json({ error: 'Akun tidak ditemukan atau tidak aktif.' }, 401)
+  }
+
   const token = signToken({ userId: user.id, tenantId: user.tenantId, role: user.role })
   await audit({ tenantId: user.tenantId, userId: user.id, action: 'USER_LOGIN' })
 
   return c.json({
     token,
     user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
+      id:         user.id,
+      name:       user.name,
+      email:      user.email,
+      role:       user.role,
+      tenantId:   user.tenantId,
       tenantName: user.tenant.name,
     },
   })
