@@ -16,7 +16,8 @@ function createTransport() {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-  })
+    family: 4
+  } as any) // <--- TAMBAHKAN "as any" DI SINI
 }
 
 const FROM = process.env.SMTP_FROM ?? 'Sajiin <noreply@sajiin.id>'
