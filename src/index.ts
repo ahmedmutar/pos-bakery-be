@@ -105,6 +105,15 @@ app.use(
 
 // ─── Security ───────────────────────────────────────────────────────────────
 app.use('*', securityHeaders)
+// Limit request body size (1MB)
+app.use('*', async (c, next) => {
+  const contentLength = parseInt(c.req.header('content-length') ?? '0')
+  if (contentLength > 1 * 1024 * 1024) {
+    return c.json({ error: 'Request terlalu besar.' }, 413)
+  }
+  await next()
+})
+
 app.use('*', globalRateLimit)
 
 // ─── Health check ───────────────────────────────────────────────────────────

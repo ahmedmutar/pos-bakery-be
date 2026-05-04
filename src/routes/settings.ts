@@ -289,7 +289,7 @@ settingsRoutes.post(
   requireRole('OWNER'),
   zValidator('json', z.object({
     name: z.string().min(2),
-    address: z.string().optional(),
+    address: z.string().max(500).optional(),
   })),
   async (c) => {
     const { tenantId } = c.get('auth')
@@ -305,7 +305,7 @@ settingsRoutes.patch(
   requireRole('OWNER'),
   zValidator('json', z.object({
     name: z.string().min(2).optional(),
-    address: z.string().optional(),
+    address: z.string().max(500).optional(),
     isActive: z.boolean().optional(),
   })),
   async (c) => {

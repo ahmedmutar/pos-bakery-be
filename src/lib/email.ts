@@ -1,309 +1,223 @@
+/**
+ * Email Service — Sajiin
+ * Priority: Resend (HTTPS API) → Nodemailer SMTP → Console fallback
+ */
+
 import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 
-// Configure via environment variables
-// SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
-// Supports any SMTP: Gmail, Mailgun, SendGrid, Resend, etc.
+// ─── Provider detection ───────────────────────────────────────────────────────
+type EmailProvider = 'resend' | 'smtp' | 'console'
 
-function createTransport() {
-  const host = process.env.SMTP_HOST
-  if (!host) return null // Email disabled if not configured
+function getProvider(): EmailProvider {
+  if (process.env.RESEND_API_KEY) return 'resend'
+  if (process.env.SMTP_HOST) return 'smtp'
+  return 'console'
+}
 
-  return nodemailer.createTransport({
-    host,
+const FROM_NAME = 'Sajiin'
+const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@sajiin.id'
+const FROM_ADDRESS = `${FROM_NAME} <${FROM_EMAIL}>`
+const APP_URL = process.env.APP_URL ?? 'https://sajiin.id'
+
+// ─── Send via Resend ──────────────────────────────────────────────────────────
+async function sendViaResend(to: string, subject: string, html: string): Promise<void> {
+  const resend = new Resend(process.env.RESEND_API_KEY)
+
+  const { error } = await resend.emails.send({
+    from: FROM_ADDRESS,
+    to,
+    subject,
+    html,
+  })
+
+  if (error) throw new Error(`Resend error: ${error.message}`)
+}
+
+// ─── Send via SMTP ────────────────────────────────────────────────────────────
+async function sendViaSMTP(to: string, subject: string, html: string): Promise<void> {
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST!,
     port: parseInt(process.env.SMTP_PORT ?? '587'),
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    family: 4
-  } as any) // <--- TAMBAHKAN "as any" DI SINI
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+  })
+
+  await transport.sendMail({ from: FROM_ADDRESS, to, subject, html })
 }
 
-const FROM = process.env.SMTP_FROM ?? 'Sajiin <noreply@sajiin.id>'
-const APP_URL = process.env.APP_URL ?? 'https://app.rotipOS.com'
+// ─── Main send function ───────────────────────────────────────────────────────
+async function send(to: string, subject: string, html: string): Promise<void> {
+  const provider = getProvider()
 
-export async function sendWelcomeEmail(params: {
-  to: string
-  ownerName: string
-  tenantName: string
-  plan: string
-}) {
-  const transport = createTransport()
-  if (!transport) {
-    console.log('[Email] SMTP not configured, skipping welcome email')
+  if (provider === 'resend') {
+    await sendViaResend(to, subject, html)
+    console.log(`[Email/Resend] ✓ Terkirim ke ${to}`)
     return
   }
 
-  const planLabel: Record<string, string> = {
-    basic: 'Basic',
-    pro: 'Pro',
-    enterprise: 'Enterprise',
+  if (provider === 'smtp') {
+    await sendViaSMTP(to, subject, html)
+    console.log(`[Email/SMTP] ✓ Terkirim ke ${to}`)
+    return
   }
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
+  // Console fallback for development
+  console.log(`[Email/DEV] To: ${to} | Subject: ${subject}`)
+}
+
+// ─── Email templates ──────────────────────────────────────────────────────────
+
+const baseStyle = `
   <style>
-    body { font-family: Arial, sans-serif; color: #2c1e15; background: #fdf8f0; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; }
-    .header { background: #b5722a; padding: 32px; text-align: center; }
-    .header h1 { color: #fdf5e8; font-size: 24px; margin: 0; }
-    .header p { color: #f7edda; margin: 8px 0 0; font-size: 14px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f7f5f0; }
+    .wrap { max-width: 560px; margin: 32px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(30,77,59,.1); }
+    .header { background: #1E4D3B; padding: 28px 32px; text-align: center; }
+    .header h1 { color: white; font-size: 20px; font-weight: 700; }
+    .header .logo { font-size: 28px; font-weight: 800; color: white; letter-spacing: -0.5px; margin-bottom: 4px; }
+    .header .logo span { color: #FF8A00; }
     .body { padding: 32px; }
-    .body h2 { font-size: 20px; color: #2c1e15; }
-    .body p { font-size: 15px; line-height: 1.6; color: #5c381a; }
-    .plan-badge { display: inline-block; background: #fdf5e8; border: 1px solid #e0c08a;
-                  color: #b5722a; padding: 4px 12px; border-radius: 100px; font-size: 13px; font-weight: bold; }
-    .cta { display: block; margin: 24px auto; width: fit-content; background: #b5722a;
-           color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none;
-           font-size: 15px; font-weight: bold; }
-    .features { background: #fdf5e8; border-radius: 12px; padding: 20px; margin: 24px 0; }
-    .features ul { margin: 8px 0; padding-left: 20px; }
-    .features li { font-size: 14px; color: #5c381a; margin-bottom: 6px; line-height: 1.5; }
-    .footer { background: #f7edda; padding: 20px; text-align: center; font-size: 12px; color: #955b22; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🥐 Roti POS</h1>
-      <p>Sistem Kasir untuk Bakery Modern</p>
-    </div>
-    <div class="body">
-      <h2>Selamat datang, ${params.ownerName}!</h2>
-      <p>
-        Toko <strong>${params.tenantName}</strong> sudah berhasil terdaftar di Roti POS.
-        Anda sekarang menggunakan paket <span class="plan-badge">${planLabel[params.plan] ?? params.plan}</span>.
-      </p>
+    .otp-box { background: #f7f5f0; border: 2px dashed #d4c9b8; border-radius: 16px; padding: 24px; margin: 24px 0; text-align: center; }
+    .otp-code { font-size: 44px; font-weight: 800; letter-spacing: 14px; color: #1E4D3B; font-family: 'Courier New', monospace; }
+    .otp-exp { font-size: 13px; color: #888; margin-top: 8px; }
+    .footer { background: #f7f5f0; padding: 16px 32px; text-align: center; font-size: 12px; color: #aaa; }
+    p { font-size: 15px; color: #333; line-height: 1.6; margin-bottom: 12px; }
+    .btn { display: inline-block; background: #1E4D3B; color: white !important; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; font-size: 15px; margin: 8px 0; }
+    .info-row { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 10px 0; font-size: 14px; }
+    .info-label { color: #888; }
+    .info-value { font-weight: 600; color: #333; }
+    .badge { display: inline-block; background: #fff3e0; color: #e67e00; border-radius: 100px; padding: 2px 12px; font-size: 12px; font-weight: 600; }
+  </style>`
 
-      <div class="features">
-        <strong>Yang bisa Anda lakukan sekarang:</strong>
-        <ul>
-          <li>Buka shift dan mulai mencatat transaksi di halaman Kasir</li>
-          <li>Tambahkan produk, bahan baku, dan resep</li>
-          <li>Lihat laporan penjualan harian dan mingguan</li>
-          <li>Undang staff dengan role Kasir atau Produksi</li>
-        </ul>
-      </div>
-
-      <a href="${APP_URL}" class="cta">Mulai Gunakan Roti POS →</a>
-
-      <p style="font-size: 13px; color: #955b22;">
-        Butuh bantuan? Balas email ini atau hubungi support kami.
-      </p>
-    </div>
-    <div class="footer">
-      © ${new Date().getFullYear()} Roti POS · Sistem Kasir Bakery Modern<br>
-      <a href="${APP_URL}" style="color: #b5722a;">app.rotipos.com</a>
-    </div>
-  </div>
-</body>
-</html>`
-
-  try {
-    await transport.sendMail({
-      from: FROM,
-      to: params.to,
-      subject: `Selamat datang di Roti POS, ${params.tenantName}! 🥐`,
-      html,
-    })
-    console.log(`[Email] Welcome email sent to ${params.to}`)
-  } catch (err) {
-    console.error('[Email] Failed to send welcome email:', err)
-    // Don't throw — email failure should not break registration
-  }
+function layout(content: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">${baseStyle}</head>
+<body><div class="wrap">
+${content}
+<div class="footer">© ${new Date().getFullYear()} Sajiin · Jangan bagikan email ini kepada siapapun</div>
+</div></body></html>`
 }
 
-export async function sendPlanUpgradeEmail(params: {
-  to: string
-  ownerName: string
-  tenantName: string
-  oldPlan: string
-  newPlan: string
-}) {
-  const transport = createTransport()
-  if (!transport) return
+// ─── OTP Email ────────────────────────────────────────────────────────────────
+export async function sendOTPEmail(params: { to: string; otp: string; name: string }): Promise<void> {
+  const provider = getProvider()
 
-  try {
-    await transport.sendMail({
-      from: FROM,
-      to: params.to,
-      subject: `Paket ${params.tenantName} berhasil diupgrade ke ${params.newPlan} 🎉`,
-      html: `
-        <div style="font-family: Arial; max-width: 600px; margin: 0 auto; padding: 32px;">
-          <h2>Halo ${params.ownerName},</h2>
-          <p>Paket toko <strong>${params.tenantName}</strong> berhasil diupgrade dari 
-             <strong>${params.oldPlan}</strong> ke <strong>${params.newPlan}</strong>.</p>
-          <p>Fitur-fitur baru sudah langsung aktif. Selamat menggunakan!</p>
-          <a href="${APP_URL}" style="background: #b5722a; color: white; padding: 12px 24px; 
-             border-radius: 8px; text-decoration: none; display: inline-block; margin-top: 16px;">
-            Buka Roti POS →
-          </a>
-        </div>
-      `,
-    })
-  } catch (err) {
-    console.error('[Email] Failed to send upgrade email:', err)
-  }
-}
-
-export async function sendAdminNewRegistrationEmail(params: {
-  ownerName: string
-  tenantName: string
-  email: string
-  plan: string
-  registeredAt: string
-}) {
-  const transport = createTransport()
-  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL
-  if (!transport || !adminEmail) {
-    console.log(`[Email] New registration: ${params.tenantName} (${params.email}) - admin notification skipped`)
-    return
-  }
-
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; color: #2c1e15; background: #fdf8f0; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; }
-    .header { background: #2c6e49; padding: 24px 32px; }
-    .header h1 { color: white; font-size: 18px; margin: 0; }
-    .header p { color: #b7e4c7; margin: 4px 0 0; font-size: 13px; }
-    .body { padding: 28px 32px; }
-    .info-row { display: flex; border-bottom: 1px solid #f0e8d8; padding: 10px 0; font-size: 14px; }
-    .info-label { color: #955b22; width: 140px; flex-shrink: 0; font-weight: bold; }
-    .info-value { color: #2c1e15; }
-    .badge { display: inline-block; background: #fdf5e8; border: 1px solid #e0c08a;
-             color: #b5722a; padding: 2px 10px; border-radius: 100px; font-size: 12px; font-weight: bold; }
-    .footer { background: #f7edda; padding: 16px; text-align: center; font-size: 12px; color: #955b22; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🆕 Registrasi Baru — Roti POS</h1>
-      <p>${params.registeredAt}</p>
-    </div>
-    <div class="body">
-      <div class="info-row">
-        <span class="info-label">Nama Owner</span>
-        <span class="info-value">${params.ownerName}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Nama Toko</span>
-        <span class="info-value">${params.tenantName}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Email</span>
-        <span class="info-value"><a href="mailto:${params.email}" style="color:#b5722a">${params.email}</a></span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Paket</span>
-        <span class="info-value"><span class="badge">${params.plan}</span></span>
-      </div>
-      <div class="info-row" style="border:0">
-        <span class="info-label">WhatsApp</span>
-        <span class="info-value">
-          <a href="https://wa.me/${process.env.ADMIN_WHATSAPP ?? '62'}?text=Halo+${encodeURIComponent(params.ownerName)},+selamat+datang+di+Roti+POS!+Saya+dari+tim+support.+Ada+yang+bisa+saya+bantu?" 
-             style="color:#2c6e49">Sapa via WhatsApp</a>
-        </span>
-      </div>
-    </div>
-    <div class="footer">
-      Roti POS Admin Notification · Dikirim otomatis saat registrasi baru
-    </div>
-  </div>
-</body>
-</html>`
-
-  try {
-    await transport.sendMail({
-      from: FROM,
-      to: adminEmail,
-      subject: `🆕 Registrasi Baru: ${params.tenantName} (${params.plan})`,
-      html,
-    })
-    console.log(`[Email] Admin notified of new registration: ${params.tenantName}`)
-  } catch (err) {
-    console.error('[Email] Failed to send admin notification:', err)
-  }
-}
-
-export async function sendOTPEmail(params: {
-  to: string
-  otp: string
-  name: string
-}) {
-  const transport = createTransport()
-  if (!transport) {
+  if (provider === 'console') {
     console.log(`[OTP DEV] Kode untuk ${params.to}: ${params.otp}`)
-    console.log('[OTP DEV] Set SMTP_HOST di environment variables untuk kirim email sungguhan')
+    console.log('[OTP DEV] Set RESEND_API_KEY atau SMTP_HOST untuk kirim email sungguhan')
     return
   }
 
-  console.log(`[OTP] Mengirim ke ${params.to} via ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`)
+  console.log(`[OTP] Mengirim ke ${params.to} via ${provider}`)
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; background: #fdf8f0; margin: 0; padding: 0; }
-    .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; }
-    .header { background: #b5722a; padding: 28px 32px; text-align: center; }
-    .header h1 { color: #fdf5e8; font-size: 20px; margin: 0; }
-    .body { padding: 32px; text-align: center; }
-    .otp-box { background: #fdf5e8; border: 2px dashed #e0c08a; border-radius: 16px;
-                padding: 24px; margin: 24px 0; }
-    .otp-code { font-size: 42px; font-weight: bold; letter-spacing: 12px;
-                 color: #b5722a; font-family: monospace; }
-    .expires { font-size: 13px; color: #955b22; margin-top: 8px; }
-    .footer { background: #f7edda; padding: 16px; text-align: center; font-size: 12px; color: #955b22; }
-  </style>
-</head>
-<body>
-  <div class="container">
+  const html = layout(`
     <div class="header">
-      <h1>🥐 Verifikasi Email — Roti POS</h1>
+      <div class="logo">Saji<span>in</span></div>
+      <h1>Kode Verifikasi Email</h1>
     </div>
     <div class="body">
-      <p style="font-size:15px;color:#2c1e15;">Halo <strong>${params.name}</strong>,</p>
-      <p style="font-size:14px;color:#5c381a;">
-        Masukkan kode OTP berikut untuk memverifikasi email dan menyelesaikan pendaftaran Anda:
-      </p>
+      <p>Halo <strong>${params.name}</strong>,</p>
+      <p>Masukkan kode OTP berikut untuk melanjutkan proses Anda:</p>
       <div class="otp-box">
         <div class="otp-code">${params.otp}</div>
-        <p class="expires">Berlaku selama 10 menit</p>
+        <div class="otp-exp">Berlaku selama <strong>10 menit</strong></div>
       </div>
-      <p style="font-size:13px;color:#955b22;">
-        Jika Anda tidak mendaftar di Roti POS, abaikan email ini.
-      </p>
-    </div>
-    <div class="footer">
-      © ${new Date().getFullYear()} Roti POS · Jangan bagikan kode ini ke siapapun
-    </div>
-  </div>
-</body>
-</html>`
+      <p style="font-size:13px;color:#999;">Jika Anda tidak meminta kode ini, abaikan email ini. Jangan bagikan kode ini kepada siapapun.</p>
+    </div>`)
 
   try {
-    await transport.sendMail({
-      from: FROM,
-      to: params.to,
-      subject: `${params.otp} — Kode Verifikasi Roti POS`,
-      html,
-    })
-    console.log(`[OTP] Sent to ${params.to}`)
+    await send(params.to, `${params.otp} — Kode Verifikasi Sajiin`, html)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[OTP] Gagal kirim ke ${params.to}: ${msg}`)
     throw err
   }
 }
+
+// ─── Welcome Email ────────────────────────────────────────────────────────────
+export async function sendWelcomeEmail(params: {
+  to: string; name: string; tenantName: string; trialDays: number
+}): Promise<void> {
+  if (getProvider() === 'console') return
+
+  const html = layout(`
+    <div class="header">
+      <div class="logo">Saji<span>in</span></div>
+      <h1>Selamat Datang! 🎉</h1>
+    </div>
+    <div class="body">
+      <p>Halo <strong>${params.name}</strong>,</p>
+      <p>Akun Sajiin untuk <strong>${params.tenantName}</strong> sudah aktif. Anda mendapat trial gratis selama <strong>${params.trialDays} hari</strong>.</p>
+      <p style="text-align:center;margin:24px 0;">
+        <a href="${APP_URL}/app/dashboard" class="btn">Mulai Sekarang →</a>
+      </p>
+      <p style="font-size:13px;color:#999;">Butuh bantuan? Hubungi kami via <a href="https://wa.me/6208970120687" style="color:#1E4D3B;">WhatsApp</a>.</p>
+    </div>`)
+
+  await send(params.to, `Selamat datang di Sajiin, ${params.name}!`, html).catch(console.error)
+}
+
+// ─── Password Reset Email ─────────────────────────────────────────────────────
+export async function sendPasswordResetEmail(params: {
+  to: string; name: string; resetUrl: string
+}): Promise<void> {
+  if (getProvider() === 'console') {
+    console.log(`[RESET DEV] ${params.to}: ${params.resetUrl}`)
+    return
+  }
+
+  const html = layout(`
+    <div class="header">
+      <div class="logo">Saji<span>in</span></div>
+      <h1>Reset Kata Sandi</h1>
+    </div>
+    <div class="body">
+      <p>Halo <strong>${params.name}</strong>,</p>
+      <p>Kami menerima permintaan reset kata sandi untuk akun Anda. Klik tombol di bawah untuk melanjutkan:</p>
+      <p style="text-align:center;margin:24px 0;">
+        <a href="${params.resetUrl}" class="btn">Reset Kata Sandi</a>
+      </p>
+      <p style="font-size:13px;color:#999;">Link ini berlaku selama <strong>1 jam</strong>. Jika Anda tidak meminta reset, abaikan email ini.</p>
+    </div>`)
+
+  await send(params.to, 'Reset Kata Sandi Sajiin', html).catch(console.error)
+}
+
+// ─── Admin notification ───────────────────────────────────────────────────────
+export async function sendAdminNewRegistrationEmail(params: {
+  ownerName: string; tenantName: string; email: string; plan: string; registeredAt: string
+}): Promise<void> {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (!adminEmail || getProvider() === 'console') {
+    console.log(`[Admin] Registrasi baru: ${params.tenantName} (${params.email})`)
+    return
+  }
+
+  const waLink = `https://wa.me/${process.env.ADMIN_WHATSAPP ?? '62'}?text=Halo+${encodeURIComponent(params.ownerName)}`
+
+  const html = layout(`
+    <div class="header">
+      <div class="logo">Saji<span>in</span></div>
+      <h1>🆕 Registrasi Baru</h1>
+    </div>
+    <div class="body">
+      <div class="info-row"><span class="info-label">Nama Owner</span><span class="info-value">${params.ownerName}</span></div>
+      <div class="info-row"><span class="info-label">Nama Toko</span><span class="info-value">${params.tenantName}</span></div>
+      <div class="info-row"><span class="info-label">Email</span><span class="info-value">${params.email}</span></div>
+      <div class="info-row"><span class="info-label">Paket</span><span class="info-value"><span class="badge">${params.plan}</span></span></div>
+      <div class="info-row"><span class="info-label">Waktu</span><span class="info-value">${params.registeredAt}</span></div>
+      <p style="text-align:center;margin-top:24px;">
+        <a href="${waLink}" class="btn">Sapa via WhatsApp</a>
+      </p>
+    </div>`)
+
+  await send(adminEmail, `🆕 Registrasi Baru: ${params.tenantName}`, html).catch(console.error)
+}
+
+// ─── OTP Email (alias untuk sendOTPEmail) ─────────────────────────────────────
+export { sendOTPEmail as sendOtp }

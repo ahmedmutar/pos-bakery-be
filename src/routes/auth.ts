@@ -6,9 +6,9 @@ import { prisma } from '../lib/prisma.js'
 import { signToken } from '../lib/jwt.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { blacklistToken } from '../lib/tokenBlacklist.js'
-import { sendWelcomeEmail, sendAdminNewRegistrationEmail, sendOTPEmail } from '../lib/email.js'
+import { sendWelcomeEmail, sendAdminNewRegistrationEmail, sendOTPEmail, sendPasswordResetEmail } from '../lib/email.js'
 import { audit } from '../lib/auditLog.js'
-import { loginRateLimit } from '../middleware/security.js'
+import { loginRateLimit, otpRateLimit } from '../middleware/security.js'
 
 export const authRoutes = new Hono()
 
@@ -20,6 +20,7 @@ function generateOTP(): string {
 
 // POST /auth/send-otp
 authRoutes.post('/send-otp',
+  otpRateLimit,
   zValidator('json', z.object({ email: z.string().email(), name: z.string().min(1) })),
   async (c) => {
     const { email, name } = c.req.valid('json')
@@ -60,6 +61,7 @@ authRoutes.post('/send-otp',
 
 // POST /auth/verify-otp (cek saja, tanpa register)
 authRoutes.post('/verify-otp',
+  otpRateLimit,
   zValidator('json', z.object({ email: z.string().email(), otp: z.string().length(6) })),
   async (c) => {
     const { email, otp } = c.req.valid('json')
@@ -76,10 +78,10 @@ authRoutes.post('/verify-otp',
 
 // ─── Register tenant + owner ────────────────────────────────────────────────
 const registerSchema = z.object({
-  tenantName: z.string().min(2),
-  slug: z.string().min(2).regex(/^[a-z0-9-]+$/, 'Slug hanya boleh huruf kecil, angka, dan tanda -'),
-  ownerName: z.string().min(2),
-  email: z.string().email(),
+  tenantName: z.string().min(2).max(100),
+  slug: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/, 'Slug hanya boleh huruf kecil, angka, dan tanda -'),
+  ownerName: z.string().min(2).max(100),
+  email: z.string().email().max(255),
   password: z.string()
   .min(8, 'Password minimal 8 karakter')
   .regex(/[A-Z]/, 'Password harus mengandung minimal 1 huruf besar')
@@ -168,8 +170,8 @@ authRoutes.post('/register', loginRateLimit, zValidator('json', registerSchema),
 
 // ─── Login ─────────────────────────────────────────────────────────────────
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  email: z.string().email().max(255),
+  password: z.string().min(1).max(128),
 })
 
 authRoutes.post('/login', loginRateLimit, zValidator('json', loginSchema), async (c) => {
@@ -277,6 +279,7 @@ authRoutes.post('/send-otp-auth', authMiddleware, async (c) => {
 
 // POST /auth/forgot-password — request reset token
 authRoutes.post('/forgot-password',
+  otpRateLimit,
   zValidator('json', z.object({ email: z.string().email() })),
   async (c) => {
     const { email } = c.req.valid('json')
@@ -286,8 +289,8 @@ authRoutes.post('/forgot-password',
       include: { tenant: { select: { name: true } } },
     })
 
-    // Always return 200 to prevent email enumeration
-    if (!user) return c.json({ message: 'Jika email terdaftar, instruksi reset akan dikirim.' })
+    const GENERIC_MSG = { message: 'Jika email terdaftar, instruksi reset akan dikirim.' }
+    if (!user) return c.json(GENERIC_MSG)
 
     // Invalidate old tokens
     await prisma.passwordResetToken.updateMany({
@@ -308,17 +311,7 @@ authRoutes.post('/forgot-password',
 
     if (process.env.SMTP_HOST) {
       try {
-        const { sendEmail } = await import('../lib/email.js')
-        await sendEmail({
-          to: email,
-          subject: `Reset Password - ${user.tenant.name}`,
-          html: `
-            <p>Halo ${user.name},</p>
-            <p>Klik link berikut untuk reset password Anda (berlaku 1 jam):</p>
-            <p><a href="${resetUrl}">${resetUrl}</a></p>
-            <p>Jika Anda tidak meminta reset password, abaikan email ini.</p>
-          `,
-        })
+        await sendPasswordResetEmail({ to: email, name: user.name, resetUrl })
       } catch (e) {
         console.error('Failed to send reset email:', e)
       }
@@ -327,7 +320,7 @@ authRoutes.post('/forgot-password',
       console.log(`[RESET TOKEN] ${email}: ${resetUrl}`)
     }
 
-    return c.json({ message: 'Jika email terdaftar, instruksi reset akan dikirim.' })
+    return c.json(GENERIC_MSG)
   }
 )
 
