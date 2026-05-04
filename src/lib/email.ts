@@ -19,7 +19,7 @@ function createTransport() {
   })
 }
 
-const FROM = process.env.SMTP_FROM ?? 'Roti POS <noreply@rotipOS.com>'
+const FROM = process.env.SMTP_FROM ?? 'Sajiin <noreply@sajiin.id>'
 const APP_URL = process.env.APP_URL ?? 'https://app.rotipOS.com'
 
 export async function sendWelcomeEmail(params: {
@@ -241,10 +241,12 @@ export async function sendOTPEmail(params: {
 }) {
   const transport = createTransport()
   if (!transport) {
-    // Development fallback — log OTP to console
-    console.log(`[OTP] ${params.to}: ${params.otp}`)
+    console.log(`[OTP DEV] Kode untuk ${params.to}: ${params.otp}`)
+    console.log('[OTP DEV] Set SMTP_HOST di environment variables untuk kirim email sungguhan')
     return
   }
+
+  console.log(`[OTP] Mengirim ke ${params.to} via ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`)
 
   const html = `
 <!DOCTYPE html>
@@ -298,8 +300,9 @@ export async function sendOTPEmail(params: {
       html,
     })
     console.log(`[OTP] Sent to ${params.to}`)
-  } catch (err) {
-    console.error('[OTP] Failed to send:', err)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[OTP] Gagal kirim ke ${params.to}: ${msg}`)
     throw err
   }
 }
