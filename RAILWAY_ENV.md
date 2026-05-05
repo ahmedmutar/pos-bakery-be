@@ -67,3 +67,45 @@ https://your-railway-url.up.railway.app/api/billing/webhook
 
 Dashboard Xendit → Settings → Webhooks → Add webhook URL
 Event yang perlu diaktifkan: `invoice.paid`
+
+---
+
+## Opsi SMTP yang Terbukti Jalan di Railway
+
+### Opsi 1: Gmail port 587 (STARTTLS) ← coba ini dulu
+```
+SMTP_HOST = smtp.gmail.com
+SMTP_PORT = 587
+SMTP_SECURE = false
+SMTP_USER = emailanda@gmail.com
+SMTP_PASS = xxxx xxxx xxxx xxxx   ← Gmail App Password
+```
+
+### Opsi 2: Brevo / Sendinblue (gratis 300 email/hari, HTTPS-based)
+Daftar di brevo.com → SMTP & API → SMTP Settings
+```
+SMTP_HOST = smtp-relay.brevo.com
+SMTP_PORT = 587
+SMTP_SECURE = false
+SMTP_USER = emailanda@gmail.com
+SMTP_PASS = xxxxxxxxxxxx   ← API key dari Brevo
+```
+
+### Opsi 3: Mailgun (gratis 5000 email/bulan 3 bulan pertama)
+Daftar di mailgun.com → Sending → Domain Settings → SMTP credentials
+```
+SMTP_HOST = smtp.mailgun.org
+SMTP_PORT = 587
+SMTP_SECURE = false
+SMTP_USER = postmaster@sandbox-xxx.mailgun.org
+SMTP_PASS = xxxxxxxxxxxx
+```
+
+### Opsi 4: Resend (gratis 3000 email/bulan, kirim ke semua email)
+Catatan: Resend BISA kirim ke semua email, bukan hanya satu.
+Yang dibatasi hanya pengirim (FROM) — harus pakai domain terverifikasi
+atau pakai domain onboarding@resend.dev untuk testing.
+```
+RESEND_API_KEY = re_xxxxxxxxxxxx
+FROM_EMAIL = onboarding@resend.dev   ← untuk testing
+```

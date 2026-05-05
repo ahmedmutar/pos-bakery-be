@@ -36,18 +36,27 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
 
 // ─── Send via SMTP ────────────────────────────────────────────────────────────
 async function sendViaSMTP(to: string, subject: string, html: string): Promise<void> {
+  const port   = parseInt(process.env.SMTP_PORT ?? '587')
+  const secure = port === 465  // 465=SSL, 587=STARTTLS
+
   const transport = nodemailer.createTransport({
     host:   process.env.SMTP_HOST!,
-    port:   parseInt(process.env.SMTP_PORT ?? '587'),
-    secure: process.env.SMTP_SECURE === 'true',
+    port,
+    secure,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    connectionTimeout: 10000,
-    greetingTimeout:   10000,
+    tls: {
+      rejectUnauthorized: false,  // toleran untuk Railway
+      ciphers: 'SSLv3',
+    },
+    connectionTimeout: 15000,
+    greetingTimeout:   15000,
+    socketTimeout:     30000,
   })
 
+  await transport.verify()  // test koneksi sebelum kirim
   await transport.sendMail({ from: FROM_ADDRESS, to, subject, html })
 }
 
@@ -62,8 +71,21 @@ async function send(to: string, subject: string, html: string): Promise<void> {
   }
 
   if (provider === 'smtp') {
-    await sendViaSMTP(to, subject, html)
-    console.log(`[Email/SMTP] ✓ Terkirim ke ${to}`)
+    try {
+      await sendViaSMTP(to, subject, html)
+      console.log(`[Email/SMTP] ✓ Terkirim ke ${to}`)
+    } catch (smtpErr: unknown) {
+      const msg = smtpErr instanceof Error ? smtpErr.message : String(smtpErr)
+      console.error(`[Email/SMTP] Gagal: ${msg}`)
+      // Fallback ke Resend jika tersedia
+      if (process.env.RESEND_API_KEY) {
+        console.log(`[Email] Mencoba fallback ke Resend...`)
+        await sendViaResend(to, subject, html)
+        console.log(`[Email/Resend] ✓ Terkirim ke ${to} (via fallback)`)
+      } else {
+        throw smtpErr
+      }
+    }
     return
   }
 
