@@ -1,4 +1,4 @@
-import { Xendit, Invoice as XenditInvoice } from 'xendit-node'
+import { Xendit } from 'xendit-node'
 
 export const PLAN_PRICES: Record<string, { amount: number; label: string; duration: number }> = {
   basic:      { amount: 149_000, label: 'Paket Basic',      duration: 30 },
@@ -22,15 +22,16 @@ export async function createXenditInvoice({
   failureRedirectUrl: string
 }) {
   const key = process.env.XENDIT_SECRET_KEY ?? ''
-  const isUAT = key.startsWith('xnd_development_')
-  const isProd = key.startsWith('xnd_production_')
-  const env = isUAT ? 'UAT' : isProd ? 'PRODUCTION' : 'DEV_BYPASS'
-  if (process.env.NODE_ENV !== 'production') console.log(`[Xendit] env: ${env}`)
+  const env = key.startsWith('xnd_development_') ? 'TEST'
+            : key.startsWith('xnd_production_')  ? 'LIVE'
+            : 'NO_KEY'
 
-  const client = new Xendit({ secretKey: key })
-  const invoiceClient = new XenditInvoice({ client })
+  console.log(`[Xendit] Creating invoice — env: ${env}`)
 
-  const invoice = await invoiceClient.createInvoice({
+  // Xendit v7 — Invoice ada di instance, bukan class terpisah
+  const xendit = new Xendit({ secretKey: key })
+
+  const invoice = await xendit.Invoice.createInvoice({
     data: {
       externalId,
       amount,
@@ -40,9 +41,10 @@ export async function createXenditInvoice({
       failureRedirectUrl,
       currency: 'IDR',
       invoiceDuration: 86400,
-      paymentMethods: ['QRIS', 'BCA', 'BNI', 'BRI', 'MANDIRI', 'PERMATA', 'OVO', 'GOPAY', 'DANA', 'LINKAJA'],
+      paymentMethods: ['QRIS', 'BCA', 'BNI', 'BRI', 'MANDIRI', 'PERMATA', 'OVO', 'GOPAY', 'DANA'],
       locale: 'id',
     },
   })
+
   return invoice
 }
