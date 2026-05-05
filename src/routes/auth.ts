@@ -112,10 +112,13 @@ authRoutes.post('/register', loginRateLimit, zValidator('json', registerSchema),
 
   const passwordHash = await bcrypt.hash(password, 12)
 
+  const trialEndsAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 hari
+
   const tenant = await prisma.tenant.create({
     data: {
       name: tenantName,
       slug,
+      trialEndsAt,
       users: {
         create: {
           name: ownerName,
