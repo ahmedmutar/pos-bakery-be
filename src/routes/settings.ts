@@ -359,9 +359,18 @@ settingsRoutes.get('/plan', requireRole('OWNER'), async (c) => {
   if (!tenant) return c.json({ error: 'Tenant tidak ditemukan' }, 404)
 
   const limits = getPlanLimits(tenant.plan)
-  console.log(`[Plan] tenantId=${tenantId} plan=${tenant.plan} trialEndsAt=${tenant.trialEndsAt}`)
   const daysLeft = trialDaysLeft(tenant.trialEndsAt ?? null)
-  const expired = isTrialExpired(tenant.trialEndsAt ?? null)
+  const expired  = isTrialExpired(tenant.trialEndsAt ?? null)
+
+  const activeSub = await prisma.subscription.findFirst({
+    where: { tenantId, status: 'PAID' },
+    orderBy: { paidAt: 'desc' },
+  })
+
+  const subDaysLeft = activeSub?.periodEnd
+    ? Math.max(0, Math.ceil((new Date(activeSub.periodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null
+  const subExpired = activeSub?.periodEnd ? new Date() > new Date(activeSub.periodEnd) : false
 
   return c.json({
     plan: tenant.plan,
