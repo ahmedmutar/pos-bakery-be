@@ -11,6 +11,7 @@ outletProductRoutes.use('*', authMiddleware)
 outletProductRoutes.get('/:outletId', async (c) => {
   const { tenantId } = c.get('auth')
   const { outletId } = c.req.param()
+  console.log(`[OutletProducts] GET outletId=${outletId} tenantId=${tenantId}`)
 
   const outlet = await prisma.outlet.findFirst({ where: { id: outletId, tenantId } })
   if (!outlet) return c.json({ error: 'Outlet tidak ditemukan' }, 404)
@@ -24,6 +25,7 @@ outletProductRoutes.get('/:outletId', async (c) => {
     orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
   })
 
+  console.log(`[OutletProducts] Found ${products.length} products for outlet ${outletId}`)
   return c.json(products.map((p) => {
     const op = p.outletProducts[0]
     return {

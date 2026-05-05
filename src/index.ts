@@ -138,7 +138,6 @@ app.route('/api/inventory', inventoryRoutes)
 app.route('/api/pre-orders', preOrderRoutes)
 app.route('/api/reports', reportRoutes)
 app.route('/api/forecast', forecastRoutes)
-app.route('/api/outlet-products', outletProductRoutes)
 
 // ─── 404 & error ────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Route tidak ditemukan' }, 404))
