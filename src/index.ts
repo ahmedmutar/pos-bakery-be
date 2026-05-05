@@ -67,6 +67,7 @@ async function runMigrations() {
       `ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "isVoided" BOOLEAN NOT NULL DEFAULT false`,
       `ALTER TABLE "OutletProduct" ADD COLUMN IF NOT EXISTS "isAvailable" BOOLEAN NOT NULL DEFAULT true`,
       `ALTER TABLE "OutletProduct" ADD COLUMN IF NOT EXISTS "stock" INTEGER`,
+      `ALTER TABLE "OutletProduct" ADD COLUMN IF NOT EXISTS "priceOverride" INTEGER`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "trialEndsAt" TIMESTAMP`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "bankName" TEXT`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "bankAccount" TEXT`,
