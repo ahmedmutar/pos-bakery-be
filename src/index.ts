@@ -69,6 +69,7 @@ async function runMigrations() {
       `ALTER TABLE "OutletProduct" ADD COLUMN IF NOT EXISTS "stock" INTEGER`,
       `ALTER TABLE "OutletProduct" ADD COLUMN IF NOT EXISTS "priceOverride" INTEGER`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "trialEndsAt" TIMESTAMP`,
+      `UPDATE "Tenant" SET "trialEndsAt" = NOW() + INTERVAL '14 days' WHERE "trialEndsAt" IS NULL`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "bankName" TEXT`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "bankAccount" TEXT`,
       `ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "bankHolder" TEXT`,
