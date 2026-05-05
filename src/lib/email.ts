@@ -6,10 +6,11 @@
 import nodemailer from 'nodemailer'
 
 // ─── Provider detection ───────────────────────────────────────────────────────
-type EmailProvider = 'resend' | 'smtp' | 'console'
+type EmailProvider = 'resend' | 'brevo' | 'smtp' | 'console'
 
 function getProvider(): EmailProvider {
   if (process.env.RESEND_API_KEY) return 'resend'
+  if (process.env.BREVO_API_KEY)  return 'brevo'
   if (process.env.SMTP_HOST)      return 'smtp'
   return 'console'
 }
@@ -32,6 +33,29 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
   })
 
   if (error) throw new Error(`Resend error: ${error.message}`)
+}
+
+// ─── Send via Brevo API (HTTP — tidak diblokir Railway) ──────────────────────
+async function sendViaBrevo(to: string, subject: string, html: string): Promise<void> {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept':       'application/json',
+      'api-key':      process.env.BREVO_API_KEY!,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender:   { name: FROM_NAME, email: FROM_EMAIL },
+      to:       [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }))
+    throw new Error(`Brevo error ${res.status}: ${JSON.stringify(err)}`)
+  }
 }
 
 // ─── Send via SMTP ────────────────────────────────────────────────────────────
@@ -67,6 +91,12 @@ async function send(to: string, subject: string, html: string): Promise<void> {
   if (provider === 'resend') {
     await sendViaResend(to, subject, html)
     console.log(`[Email/Resend] ✓ Terkirim ke ${to}`)
+    return
+  }
+
+  if (provider === 'brevo') {
+    await sendViaBrevo(to, subject, html)
+    console.log(`[Email/Brevo] ✓ Terkirim ke ${to}`)
     return
   }
 
