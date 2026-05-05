@@ -162,6 +162,19 @@ settingsRoutes.post(
     const { tenantId } = c.get('auth')
     const body = c.req.valid('json')
 
+    // Cek limit user sesuai plan
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } })
+    const limits = getPlanLimits(tenant?.plan ?? 'basic')
+    const currentCount = await prisma.user.count({ where: { tenantId } })
+    if (!checkLimit(currentCount, limits.maxUsers)) {
+      return c.json({
+        error: `Paket ${tenant?.plan ?? 'basic'} hanya mendukung ${limits.maxUsers} staff. Upgrade paket untuk menambah staff.`,
+        code: 'LIMIT_EXCEEDED',
+        limit: limits.maxUsers,
+        current: currentCount,
+      }, 403)
+    }
+
     const existing = await prisma.user.findFirst({
       where: { tenantId, email: body.email },
     })
@@ -293,6 +306,20 @@ settingsRoutes.post(
   })),
   async (c) => {
     const { tenantId } = c.get('auth')
+
+    // Cek limit outlet sesuai plan
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } })
+    const limits = getPlanLimits(tenant?.plan ?? 'basic')
+    const currentCount = await prisma.outlet.count({ where: { tenantId } })
+    if (!checkLimit(currentCount, limits.maxOutlets)) {
+      return c.json({
+        error: `Paket ${tenant?.plan ?? 'basic'} hanya mendukung ${limits.maxOutlets} outlet. Upgrade paket untuk menambah outlet.`,
+        code: 'LIMIT_EXCEEDED',
+        limit: limits.maxOutlets,
+        current: currentCount,
+      }, 403)
+    }
+
     const outlet = await prisma.outlet.create({
       data: { tenantId, ...c.req.valid('json') },
     })
@@ -344,6 +371,13 @@ settingsRoutes.get('/plan', requireRole('OWNER'), async (c) => {
       daysLeft,
       expired,
     },
+    subscription: activeSub ? {
+      id:        activeSub.id,
+      plan:      activeSub.plan,
+      periodEnd: activeSub.periodEnd,
+      daysLeft:  subDaysLeft,
+      expired:   subExpired,
+    } : null,
   })
 })
 

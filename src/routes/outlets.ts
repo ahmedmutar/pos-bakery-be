@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
-import { getPlanLimits, checkLimit } from '../lib/planLimits.js'
+import { getPlanLimits, checkLimit, isTrialExpired } from '../lib/planLimits.js'
 import { authMiddleware } from '../middleware/auth.js'
 
 export const outletRoutes = new Hono()

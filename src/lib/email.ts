@@ -273,3 +273,43 @@ export async function sendAdminNewRegistrationEmail(params: {
 
 // ─── OTP Email (alias untuk sendOTPEmail) ─────────────────────────────────────
 export { sendOTPEmail as sendOtp }
+
+// ─── Subscription Expiry Reminder ────────────────────────────────────────────
+export async function sendSubscriptionExpiryEmail(params: {
+  to: string; name: string; tenantName: string
+  plan: string; daysLeft: number; renewUrl: string
+}): Promise<void> {
+  if (getProvider() === 'console') {
+    console.log(`[EXPIRY DEV] ${params.to}: paket habis ${params.daysLeft} hari lagi`)
+    return
+  }
+
+  const urgent = params.daysLeft <= 3
+  const planLabel = params.plan.charAt(0).toUpperCase() + params.plan.slice(1)
+
+  const html = layout(`
+    <div class="header">
+      <div class="logo">Saji<span>in</span></div>
+      <h1>${urgent ? '⚠️ Paket Hampir Berakhir!' : '📅 Pengingat Perpanjangan'}</h1>
+    </div>
+    <div class="body">
+      <p>Halo <strong>${params.name}</strong>,</p>
+      <p>
+        Paket <strong>${planLabel}</strong> untuk toko <strong>${params.tenantName}</strong>
+        akan berakhir dalam <strong style="color:${urgent ? '#ef4444' : '#e67e00'}">${params.daysLeft} hari</strong>.
+      </p>
+      ${urgent ? '<p style="color:#ef4444;font-weight:600;">Segera perpanjang agar operasional toko tidak terganggu.</p>' : ''}
+      <p style="text-align:center;margin:24px 0;">
+        <a href="${params.renewUrl}" class="btn">Perpanjang Sekarang →</a>
+      </p>
+      <p style="font-size:13px;color:#999;">
+        Butuh bantuan? Hubungi kami via <a href="https://wa.me/6208970120687" style="color:#1E4D3B;">WhatsApp</a>.
+      </p>
+    </div>`)
+
+  await send(
+    params.to,
+    `${urgent ? '[PENTING] ' : ''}Paket ${planLabel} Anda berakhir dalam ${params.daysLeft} hari — Sajiin`,
+    html
+  ).catch(console.error)
+}

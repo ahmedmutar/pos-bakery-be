@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { createXenditInvoice, PLAN_PRICES } from '../lib/xendit.js'
+import { sendSubscriptionExpiryEmail } from '../lib/email.js'
 
 export const billingRoutes = new Hono()
 
@@ -171,7 +172,8 @@ billingRoutes.post('/webhook', async (c) => {
 
   const now = new Date()
   const periodEnd = new Date(now)
-  periodEnd.setDate(periodEnd.getDate() + 30)
+  const planDuration = PLAN_PRICES[subscription.plan]?.duration ?? 30
+  periodEnd.setDate(periodEnd.getDate() + planDuration)
 
   // Activate subscription
   await prisma.subscription.update({
@@ -237,4 +239,55 @@ billingRoutes.get('/history', authMiddleware, async (c) => {
   })
 
   return c.json(subs)
+})
+
+// GET /billing/check-expiry — cek subscription yang mau habis (dipanggil oleh cron)
+billingRoutes.get('/check-expiry', async (c) => {
+  const superKey = c.req.header('x-admin-key')
+  if (superKey !== process.env.SUPER_ADMIN_KEY) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const now = new Date()
+  const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
+
+  // Cari subscription yang habis dalam 7 hari
+  const expiring = await prisma.subscription.findMany({
+    where: {
+      status: 'PAID',
+      periodEnd: { gte: now, lte: in7Days },
+    },
+    include: {
+      tenant: {
+        include: {
+          users: { where: { role: 'OWNER', isActive: true }, take: 1 },
+        },
+      },
+    },
+  })
+
+  let sent = 0
+  for (const sub of expiring) {
+    const owner = sub.tenant.users[0]
+    if (!owner) continue
+
+    const daysLeft = Math.ceil((new Date(sub.periodEnd!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    try {
+      await sendSubscriptionExpiryEmail({
+        to:         owner.email,
+        name:       owner.name,
+        tenantName: sub.tenant.name,
+        plan:       sub.plan,
+        daysLeft,
+        renewUrl:   `${process.env.APP_URL}/app/upgrade`,
+      })
+      sent++
+    } catch (e) {
+      console.error(`[Billing] Gagal kirim reminder ke ${owner.email}:`, e)
+    }
+  }
+
+  return c.json({ checked: expiring.length, sent })
 })

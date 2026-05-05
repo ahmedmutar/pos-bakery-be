@@ -43,6 +43,14 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
 }
 
 export function getPlanLimits(plan: string): PlanLimits {
+  // Trial (plan = 'basic' dengan trialEndsAt aktif) dapat akses semua fitur pro
+  // Limit tetap ikut plan yang dipilih
+  return PLAN_LIMITS[plan] ?? PLAN_LIMITS.basic
+}
+
+export function getPlanLimitsWithTrial(plan: string, isOnTrial: boolean): PlanLimits {
+  // Saat trial, berikan akses fitur pro tapi limit tetap basic
+  if (isOnTrial) return PLAN_LIMITS.pro
   return PLAN_LIMITS[plan] ?? PLAN_LIMITS.basic
 }
 
