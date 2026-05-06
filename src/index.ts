@@ -27,7 +27,10 @@ import { forecastRoutes } from './routes/forecast.js'
 async function runMigrations() {
   try {
     const { default: pg } = await import('pg')
-    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    const pool = new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    })
     
     const migrations = [
       `CREATE TABLE IF NOT EXISTS "EmailOTP" (
