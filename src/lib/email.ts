@@ -160,11 +160,16 @@ ${content}
 
 // ─── OTP Email ────────────────────────────────────────────────────────────────
 export async function sendOTPEmail(params: { to: string; otp: string; name: string }): Promise<void> {
+  console.log('[DEBUG] sendOTPEmail called:', params.to)
+  console.log('[DEBUG] BREVO_API_KEY:', process.env.BREVO_API_KEY ? 'SET (' + process.env.BREVO_API_KEY.substring(0,10) + '...)' : 'NOT SET')
+  console.log('[DEBUG] RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'SET' : 'NOT SET')
+
   const provider = getProvider()
+  console.log('[DEBUG] provider selected:', provider)
 
   if (provider === 'console') {
     console.log(`[OTP DEV] Kode untuk ${params.to}: ${params.otp}`)
-    console.log('[OTP DEV] Set RESEND_API_KEY atau SMTP_HOST untuk kirim email sungguhan')
+    console.log('[OTP DEV] Set BREVO_API_KEY untuk kirim email sungguhan')
     return
   }
 
