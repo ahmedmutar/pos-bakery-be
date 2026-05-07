@@ -42,17 +42,12 @@ authRoutes.post('/send-otp',
 
     await prisma.emailOTP.create({ data: { email, otp, expiresAt } })
 
-    // Kirim email
-    if (process.env.SMTP_HOST) {
-      try {
-        await sendOTPEmail({ to: email, otp, name })
-      } catch (e) {
-        console.error('Failed to send OTP email:', e)
-        return c.json({ error: 'Gagal mengirim OTP. Periksa email Anda dan coba lagi.' }, 500)
-      }
-    } else {
-      // Dev mode — log ke console
-      console.log(`[OTP DEV] ${email}: ${otp}`)
+    // Kirim email via provider yang tersedia (Brevo/Resend/SMTP/console)
+    try {
+      await sendOTPEmail({ to: email, otp, name })
+    } catch (e) {
+      console.error('Failed to send OTP email:', e)
+      return c.json({ error: 'Gagal mengirim OTP. Coba lagi.' }, 500)
     }
 
     return c.json({ message: 'OTP berhasil dikirim.' })
@@ -323,14 +318,10 @@ authRoutes.post('/send-otp-auth', authMiddleware, async (c) => {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
   await prisma.emailOTP.create({ data: { email: user.email, otp, expiresAt } })
 
-  if (process.env.SMTP_HOST) {
-    try {
-      await sendOTPEmail({ to: user.email, otp, name: user.name })
-    } catch {
-      console.log(`[OTP DEV] ${user.email}: ${otp}`)
-    }
-  } else {
-    console.log(`[OTP DEV] ${user.email}: ${otp}`)
+  try {
+    await sendOTPEmail({ to: user.email, otp, name: user.name })
+  } catch (e) {
+    console.error('[OTP Auth] Gagal kirim email:', e)
   }
 
   return c.json({ message: 'OTP berhasil dikirim.' })
@@ -368,15 +359,10 @@ authRoutes.post('/forgot-password',
     // Try send email if SMTP configured
     const resetUrl = `${process.env.APP_URL ?? 'http://localhost:5173'}/reset-password?token=${token}`
 
-    if (process.env.SMTP_HOST) {
-      try {
-        await sendPasswordResetEmail({ to: email, name: user.name, resetUrl })
-      } catch (e) {
-        console.error('Failed to send reset email:', e)
-      }
-    } else {
-      // Development: log token to console
-      console.log(`[RESET TOKEN] ${email}: ${resetUrl}`)
+    try {
+      await sendPasswordResetEmail({ to: email, name: user.name, resetUrl })
+    } catch (e) {
+      console.error('Failed to send reset email:', e)
     }
 
     return c.json(GENERIC_MSG)
