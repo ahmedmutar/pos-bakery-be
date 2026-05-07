@@ -9,6 +9,9 @@ import nodemailer from 'nodemailer'
 type EmailProvider = 'resend' | 'brevo' | 'smtp' | 'console'
 
 function getProvider(): EmailProvider {
+  console.log('[Email] RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'SET' : 'NOT SET')
+  console.log('[Email] BREVO_API_KEY:', process.env.BREVO_API_KEY ? 'SET' : 'NOT SET')
+  console.log('[Email] SMTP_HOST:', process.env.SMTP_HOST ? 'SET' : 'NOT SET')
   if (process.env.RESEND_API_KEY) return 'resend'
   if (process.env.BREVO_API_KEY)  return 'brevo'
   if (process.env.SMTP_HOST)      return 'smtp'
